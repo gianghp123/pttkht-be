@@ -68,7 +68,7 @@
     { "id": "uuid", "name": "report.pdf" }
   ],
   "permissions": [
-    { "fileId": "uuid", "permissionType": "read" }
+    { "fileId": "uuid", "permissionLevel": 1 }
   ]
 }
 ```
@@ -125,7 +125,7 @@
   "permissions": [
     {
       "userId": "uuid",
-      "permissionType": "read"
+      "permissionLevel": 1
     }
   ],
   "createdAt": "datetime"

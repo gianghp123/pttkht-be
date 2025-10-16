@@ -1,5 +1,5 @@
 import { Exclude } from 'class-transformer';
-import { Role } from 'src/constants/enums';
+import { Role } from 'src/core/constants/enums';
 import { FileEntity } from 'src/modules/files/entities/file.entity';
 import { Permission } from 'src/modules/permission/entities/permission.entity';
 import type { Relation } from 'typeorm';

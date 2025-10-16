@@ -1,18 +1,14 @@
 import {
-  BadRequestException,
+  ConflictException,
   ForbiddenException,
-  forwardRef,
-  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { PermissionType, Role } from 'src/constants/enums';
-import { ensureUnique } from 'src/core/utils/check-unique.util';
+import { PermissionLevel, Role } from 'src/core/constants/enums';
 import { Repository } from 'typeorm';
 import { FileService } from '../files/file.service';
 import { UsersService } from '../users/users.service';
-import { UpdatePermissionDTO } from './dtos/permission.dto';
 import { Permission } from './entities/permission.entity';
 
 @Injectable()
@@ -20,18 +16,50 @@ export class PermissionsService {
   constructor(
     @InjectRepository(Permission)
     private permissionRepository: Repository<Permission>,
-    @Inject(forwardRef(() => FileService))
-    private readonly fileService: FileService,
-    @Inject(forwardRef(() => UsersService))
-    private readonly userService: UsersService,
+    private usersService: UsersService,
+    private filesService: FileService,
   ) {}
 
+  async getAllAccessByFileId(fileId: string): Promise<Permission[]> {
+    return await this.permissionRepository.find({
+      relations: {
+        user: true,
+      },
+      where: {
+        file: {
+          id: fileId,
+        },
+      },
+    });
+  }
+
   async updatePermission(
-    id: string,
-    dto: UpdatePermissionDTO,
+    requestUserId: string,
+    requestUserRole: Role,
+    fileId: string,
+    permissionId: string,
+    permissionLevel: PermissionLevel,
   ): Promise<Permission> {
-    const permission = await this.getPermissionById(id);
-    permission.permissionType = dto.permissionType;
+    if (
+      !(await this.hasAccess(
+        requestUserId,
+        requestUserRole,
+        fileId,
+        PermissionLevel.SHARE,
+      ))
+    ) {
+      throw new ForbiddenException(
+        "You don't have permission to assign permission to this file",
+      );
+    }
+    const permission = await this.getPermissionById(permissionId);
+    if (
+      permission.user.id === requestUserId ||
+      permission.user.role === Role.Admin
+    ) {
+      throw new ForbiddenException("You can't assign permission to yourself");
+    }
+    permission.permissionLevel = permissionLevel;
     const updatedPermission = await this.permissionRepository.save(permission);
     return updatedPermission;
   }
@@ -54,25 +82,16 @@ export class PermissionsService {
     return permission;
   }
 
-  async createPermission(
-    fileId: string,
-    userId: string,
-    permissionType: PermissionType,
-  ): Promise<Permission> {
-    const file = await this.fileService.getFileById(fileId);
-    const user = await this.userService.getUserById(userId);
-    ensureUnique(
-      this.permissionRepository,
-      { file, user, permissionType },
-      'Permission',
-    );
-    const permission = this.permissionRepository.create({
-      file,
-      user,
-      permissionType,
+  async getPermissionWithoutRelationById(id: string): Promise<Permission> {
+    const permission = await this.permissionRepository.findOne({
+      where: {
+        id,
+      },
     });
-    const createdPermission = await this.permissionRepository.save(permission);
-    return createdPermission;
+    if (!permission) {
+      throw new NotFoundException('Permission not found');
+    }
+    return permission;
   }
 
   async getAllPermissions(): Promise<Permission[]> {
@@ -84,48 +103,57 @@ export class PermissionsService {
     });
   }
 
-  async removePermission(ownerId: string, permissionId: string): Promise<void> {
-    const owner = await this.userService.getUserById(ownerId);
-    if (!owner) {
-      throw new NotFoundException('Owner not found');
-    }
-    const permission = await this.getPermissionById(permissionId);
-    if (owner.role !== Role.Admin && permission.file.owner.id !== ownerId) {
-      throw new ForbiddenException(
-        "You don't have permission to remove permission to this file",
-      );
-    }
-    if (permission.user.id === ownerId || permission.user.role === Role.Admin) {
-      throw new ForbiddenException(
-        "You don't have permission to remove permission to this user",
-      );
-    }
-    await this.permissionRepository.delete(permission);
-  }
-
-  async assignPermission(
-    ownerId: string,
-    userId: string,
+  async removePermission(
+    requestUserId: string,
+    requestUserRole: Role,
     fileId: string,
-    permissionType: PermissionType,
+    permissionId: string,
   ): Promise<void> {
-    const owner = await this.userService.getUserById(ownerId);
-    if (!owner) {
-      throw new NotFoundException('Owner not found');
-    }
-    const file = await this.fileService.getFileById(fileId);
-    if (owner.role !== Role.Admin && file.owner.id !== ownerId) {
+    if (
+      !(await this.hasAccess(
+        requestUserId,
+        requestUserRole,
+        fileId,
+        PermissionLevel.SHARE,
+      ))
+    ) {
       throw new ForbiddenException(
         "You don't have permission to assign permission to this file",
       );
     }
-    const user = await this.userService.getUserById(userId);
-    if (!user) {
-      throw new NotFoundException('User not found');
+    const permission = await this.getPermissionById(permissionId);
+    if (
+      permission.user.id === requestUserId ||
+      permission.user.role === Role.Admin
+    ) {
+      throw new ForbiddenException("You can't remove your permission");
     }
-    if (user.id === ownerId || user.role === Role.Admin) {
+
+    await this.permissionRepository.delete(permission);
+  }
+
+  async assignPermission(
+    requestUserId: string,
+    requestUserRole: Role,
+    userId: string,
+    fileId: string,
+    permissionLevel: PermissionLevel,
+  ): Promise<void> {
+    if (permissionLevel == PermissionLevel.SHARE) {
       throw new ForbiddenException(
-        "You don't have permission to assign permission to this user",
+        "You can't assign permission level to share",
+      );
+    }
+    if (
+      !(await this.hasAccess(
+        requestUserId,
+        requestUserRole,
+        fileId,
+        PermissionLevel.SHARE,
+      ))
+    ) {
+      throw new ForbiddenException(
+        "You don't have permission to assign permission to this file",
       );
     }
 
@@ -137,13 +165,51 @@ export class PermissionsService {
         user: {
           id: userId,
         },
-        permissionType,
       },
     });
 
-    if (access) {
-      throw new BadRequestException('User already has permission');
+    if (access && access.permissionLevel >= permissionLevel) {
+      throw new ConflictException('User already has permission');
     }
-    await this.createPermission(fileId, userId, permissionType);
+
+    const user = await this.usersService.getUserById(userId);
+    if (user.id === requestUserId || user.role === Role.Admin) {
+      throw new ForbiddenException(
+        "You can't assign permission to yourself or admin",
+      );
+    }
+
+    if (!access) {
+      const file = await this.filesService.getFileById(fileId);
+      const permission = this.permissionRepository.create({
+        file: file,
+        user: user,
+        permissionLevel,
+      });
+      await this.permissionRepository.save(permission);
+    } else {
+      access.permissionLevel = permissionLevel;
+      await this.permissionRepository.save(access);
+    }
+  }
+
+  async hasAccess(
+    userId: string,
+    userRole: Role,
+    fileId: string,
+    required: PermissionLevel,
+  ): Promise<boolean> {
+    if (userRole === Role.Admin) return true;
+
+    const permission = await this.permissionRepository.findOne({
+      where: {
+        file: { id: fileId },
+        user: { id: userId },
+      },
+    });
+    if (!permission) {
+      return false;
+    }
+    return permission.permissionLevel >= required;
   }
 }

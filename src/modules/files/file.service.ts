@@ -1,16 +1,20 @@
 import {
   ForbiddenException,
+  forwardRef,
+  Inject,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { PermissionType, Role } from 'src/constants/enums';
+import { PermissionLevel, Role } from 'src/core/constants/enums';
 import { DataSource, Repository } from 'typeorm';
 import { MinioClientService } from '../miniIO/minio.service';
 import { Permission } from '../permission/entities/permission.entity';
+import { PermissionsService } from '../permission/permission.service';
 import { User } from '../users/entities/user.entity';
 import { UsersService } from '../users/users.service';
+import { FileQueryDTO } from './dtos/file.dto';
 import { FileEntity } from './entities/file.entity';
 
 @Injectable()
@@ -18,28 +22,31 @@ export class FileService {
   constructor(
     @InjectRepository(FileEntity)
     private fileRepository: Repository<FileEntity>,
-    private readonly usersService: UsersService,
-    private readonly minioClientService: MinioClientService,
+    private usersService: UsersService,
+    private minioClientService: MinioClientService,
+    @Inject(forwardRef(() => PermissionsService))
+    private permissionService: PermissionsService,
     private dataSource: DataSource,
   ) {}
 
   async createShareLink(
+    requestUserId: string,
+    requestUserRole: Role,
     fileId: string,
-    currentUserId: string,
   ): Promise<String> {
-    const file = await this.getFileById(fileId);
-    if (!file) {
-      throw new NotFoundException('File not found');
-    }
-    const user = await this.usersService.getUserById(currentUserId);
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-    if (user.role !== Role.Admin && file.owner.id !== user.id) {
+    if (
+      !(await this.permissionService.hasAccess(
+        requestUserId,
+        requestUserRole,
+        fileId,
+        PermissionLevel.WRITE,
+      ))
+    ) {
       throw new ForbiddenException(
         'You dont have permission to create share link for this file',
       );
     }
+    const file = await this.getFileById(fileId);
     const presignedUrl = await this.minioClientService.getPresignedUrl(
       file.name,
     );
@@ -56,36 +63,33 @@ export class FileService {
     });
   }
 
-  async getFileAllAccess(fileId: string) {
-    const file = await this.fileRepository.findOne({
-      where: {
-        id: fileId,
-      },
-      relations: {
-        permissions: {
-          user: true,
-        },
-      },
-    });
-    if (!file) {
-      throw new NotFoundException('File not found');
-    }
-    return file.permissions || [];
-  }
-
-  async deleteFile(userId: string, id: string) {
-    const user = await this.usersService.getUserById(userId);
-    const file = await this.getFileById(id);
-    if (user.role !== Role.Admin && file.owner.id !== user.id) {
+  async deleteFile(
+    requestUserId: string,
+    requestUserRole: Role,
+    fileId: string,
+  ) {
+    if (
+      !(await this.permissionService.hasAccess(
+        requestUserId,
+        requestUserRole,
+        fileId,
+        PermissionLevel.WRITE,
+      ))
+    ) {
       throw new ForbiddenException(
         'You dont have permission to delete this file',
       );
     }
-    if (!file) {
-      throw new NotFoundException('File not found');
+    const file = await this.getFileById(fileId);
+    try {
+      await this.fileRepository.remove(file);
+      await this.minioClientService.removeFile(file.name);
+    } catch (error) {
+      throw new InternalServerErrorException(
+        error,
+        'Error while deleting file',
+      );
     }
-    await this.fileRepository.remove(file);
-    await this.minioClientService.removeFile(file.name);
   }
 
   async getFileById(id: string): Promise<FileEntity> {
@@ -104,17 +108,40 @@ export class FileService {
     return file;
   }
 
-  async getAllFile(currentUserId: string): Promise<FileEntity[]> {
-    const files = await this.fileRepository
+  async getAllFile(query: FileQueryDTO): Promise<FileEntity[]> {
+    console.log(query);
+    const queryBuilder = this.fileRepository
       .createQueryBuilder('file')
-      .leftJoinAndSelect('file.owner', 'owner')
-      .leftJoinAndSelect(
-        'file.permissions',
-        'permission',
-        'permission.user_id = :userId', // condition applied *only to the join*
-        { userId: currentUserId },
-      )
-      .getMany();
+      .leftJoinAndSelect('file.owner', 'owner');
+    if (query.ownerId) {
+      queryBuilder.andWhere('file.owner.id = :ownerId', {
+        ownerId: query.ownerId,
+      });
+    }
+    if (query.name) {
+      queryBuilder.andWhere('file.name LIKE :name', {
+        name: `%${query.name}%`,
+      });
+    }
+    if (query.mimeType) {
+      queryBuilder.andWhere('file.mimeType LIKE :mimeType', {
+        mimeType: `%${query.mimeType}%`,
+      });
+    }
+    if (query.createdAt) {
+      const date = query.createdAt;
+      const nextDay = new Date(date);
+      nextDay.setUTCDate(date.getUTCDate() + 1);
+
+      queryBuilder.andWhere(
+        'file.createdAt >= :start AND file.createdAt < :end',
+        {
+          start: date.toISOString(),
+          end: nextDay.toISOString(),
+        },
+      );
+    }
+    const files = await queryBuilder.getMany();
     return files;
   }
 
@@ -130,18 +157,12 @@ export class FileService {
     if (existingFile) {
       file.originalname = `${file.originalname}-${Date.now()}`;
     }
-    const savedFile = await this.createAdminAndOwnerPermissionsForFile(
-      file,
-      owner,
-    );
+    const savedFile = await this.createOwnerPermissionsForFile(file, owner);
     await this.minioClientService.uploadFile(file);
     return savedFile;
   }
 
-  async createAdminAndOwnerPermissionsForFile(
-    file: Express.Multer.File,
-    owner: User,
-  ) {
+  async createOwnerPermissionsForFile(file: Express.Multer.File, owner: User) {
     const admin = await this.usersService.getAdmin();
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
@@ -157,45 +178,15 @@ export class FileService {
 
       const savedFile = await queryRunner.manager.save(FileEntity, fileEntity);
 
-      const permissions = [
-        {
-          file: savedFile,
-          user: admin,
-          permissionType: PermissionType.READ,
-        },
-        {
-          file: savedFile,
-          user: admin,
-          permissionType: PermissionType.WRITE,
-        },
-        {
-          file: savedFile,
-          user: admin,
-          permissionType: PermissionType.SHARE,
-        },
-      ];
-
       if (owner.id !== admin.id) {
-        permissions.push(
-          {
-            file: savedFile,
-            user: owner,
-            permissionType: PermissionType.READ,
-          },
-          {
-            file: savedFile,
-            user: owner,
-            permissionType: PermissionType.WRITE,
-          },
-          {
-            file: savedFile,
-            user: owner,
-            permissionType: PermissionType.SHARE,
-          },
-        );
+        const permission = queryRunner.manager.create(Permission, {
+          file: savedFile,
+          user: owner,
+          permissionLevel: PermissionLevel.SHARE,
+        });
+        await queryRunner.manager.save(Permission, permission);
       }
 
-      await queryRunner.manager.save(Permission, permissions);
       await queryRunner.commitTransaction();
       return savedFile;
     } catch (err) {
@@ -210,26 +201,24 @@ export class FileService {
     }
   }
 
-  async downloadFile(fileId: string, userId: string) {
-    const file = await this.fileRepository.findOne({
-      relations: {
-        permissions: true,
-      },
-      where: {
-        id: fileId,
-        permissions: {
-          user: {
-            id: userId,
-          },
-          permissionType: PermissionType.WRITE,
-        },
-      },
-    });
-    if (!file) {
+  async downloadFile(
+    requestUserId: string,
+    requestUserRole: Role,
+    fileId: string,
+  ) {
+    if (
+      !(await this.permissionService.hasAccess(
+        requestUserId,
+        requestUserRole,
+        fileId,
+        PermissionLevel.READ,
+      ))
+    ) {
       throw new ForbiddenException(
-        'File not found or you do not have permission to download this file',
+        'You do not have permission to download this file',
       );
     }
+    const file = await this.getFileById(fileId);
     return {
       fileBuffer: await this.minioClientService.downloadFile(file.name),
       fileName: file.name,

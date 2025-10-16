@@ -1,7 +1,7 @@
 import { Type } from 'class-transformer';
+import { IsDate, IsOptional, IsString } from 'class-validator';
 import { AutoExpose } from 'src/core/decorators/auto-expose.decorator';
 import { BaseResponseDto } from 'src/core/dto/base.dto';
-import { SimplePermissionDTO } from 'src/modules/permission/dtos/permission.dto';
 import { UserDTO } from 'src/modules/users/dtos/user.dto';
 
 @AutoExpose()
@@ -15,8 +15,21 @@ export class FileDTO extends BaseResponseDto {
   createdAt: Date;
 }
 
-@AutoExpose()
-export class FileDTOWithPermissions extends FileDTO {
-  @Type(() => SimplePermissionDTO)
-  permissions: SimplePermissionDTO[];
+export class FileQueryDTO {
+  @IsString()
+  @IsOptional()
+  name?: string;
+
+  @IsString()
+  @IsOptional()
+  mimeType?: string;
+
+  @IsString()
+  @IsOptional()
+  ownerId?: string;
+
+  @Type(() => Date)
+  @IsDate()
+  @IsOptional()
+  createdAt?: Date;
 }

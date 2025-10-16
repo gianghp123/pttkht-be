@@ -30,8 +30,17 @@ export class PermissionsController {
     );
   }
 
+  @ApiOkResponse({ type: [PermissionDTO] })
+  @Get('/file/:fileId')
+  async getAllAccessByFileId(
+    @Param('fileId') fileId: string,
+  ): Promise<PermissionDTO[]> {
+    const accessList = await this.permissionsService.getAllAccessByFileId(fileId);
+    return PermissionDTO.fromEntities(accessList);
+  }
+
   @ApiOkResponse({ type: PermissionDTO })
-  @Get('admin/:id')
+  @Get(':id')
   async getPermissionById(@Param('id') id: string): Promise<PermissionDTO> {
     const permission = await this.permissionsService.getPermissionById(id);
     return PermissionDTO.fromEntity(permission);
@@ -40,11 +49,18 @@ export class PermissionsController {
   @ApiOkResponse({ type: PermissionDTO })
   @Patch(':permissionId')
   async updatePermission(
+    @Request() req,
     @Param('permissionId') permissionId: string,
     @Body() dto: UpdatePermissionDTO,
   ): Promise<PermissionDTO> {
     return PermissionDTO.fromEntity(
-      await this.permissionsService.updatePermission(permissionId, dto),
+      await this.permissionsService.updatePermission(
+        req.user.id,
+        req.user.role,
+        dto.fileId,
+        permissionId,
+        dto.permissionLevel,
+      ),
     );
   }
 
@@ -53,21 +69,26 @@ export class PermissionsController {
     @Request() req,
     @Body() body: CreatePermissionDTO,
   ): Promise<void> {
-    const ownerId = req.user.id;
     return this.permissionsService.assignPermission(
-      ownerId,
+      req.user.id,
+      req.user.role,
       body.userId,
       body.fileId,
-      body.permissionType,
+      body.permissionLevel,
     );
   }
 
-  @Delete(':permissionId')
+  @Delete(':permissionId/file/:fileId')
   async removePermissionFromFile(
     @Request() req,
     @Param('permissionId') permissionId: string,
+    @Param('fileId') fileId: string,
   ): Promise<void> {
-    const ownerId = req.user.id;
-    return this.permissionsService.removePermission(ownerId, permissionId);
+    return this.permissionsService.removePermission(
+      req.user.id,
+      req.user.role,
+      fileId,
+      permissionId,
+    );
   }
 }

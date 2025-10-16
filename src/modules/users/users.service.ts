@@ -1,9 +1,9 @@
-import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Role } from 'src/constants/enums';
+import { Role } from 'src/core/constants/enums';
 import { BcryptUtil } from 'src/core/utils/bcrypt.util';
 import { Repository } from 'typeorm';
-import { UpdateUserDTO } from './dtos/user.dto';
+import { CreateUserDTO, UpdateUserDTO } from './dtos/user.dto';
 import { User } from './entities/user.entity';
 
 @Injectable()
@@ -15,7 +15,7 @@ export class UsersService implements OnModuleInit {
 
   async deleteUser(id: string): Promise<void> {
     const user = await this.getUserById(id);
-    await this.userRepository.delete(user);
+    await this.userRepository.remove(user);
   }
 
   async getAdmin(): Promise<User> {
@@ -57,5 +57,22 @@ export class UsersService implements OnModuleInit {
     this.userRepository.merge(user, updateUserDto);
     const updatedUser = await this.userRepository.save(user);
     return updatedUser;
+  }
+
+  async createUser(userDto: CreateUserDTO): Promise<User> {
+    const exitUser = await this.userRepository.findOneBy({
+      username: userDto.username,
+    });
+    if (exitUser) {
+      throw new BadRequestException('User already exists');
+    }
+    const user = this.userRepository.create(
+      {
+        username: userDto.username,
+        passwordHash: await BcryptUtil.hash(userDto.password),
+        role: Role.User,
+      }
+    );
+    return await this.userRepository.save(user);
   }
 }

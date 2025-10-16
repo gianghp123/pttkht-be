@@ -1,8 +1,16 @@
-import { Body, Controller, Delete, Get, Param, Patch, Request } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Request,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
-import { Role } from 'src/constants/enums';
+import { Role } from 'src/core/constants/enums';
 import { Roles } from 'src/core/decorators/role.decorator';
-import { UpdateUserDTO, UserDTO } from './dtos/user.dto';
+import { CreateUserDTO, UserDTO } from './dtos/user.dto';
 import { UsersService } from './users.service';
 
 @ApiBearerAuth()
@@ -19,6 +27,12 @@ export class UsersController {
     return UserDTO.fromEntities(await this.usersService.getAllUsers());
   }
 
+  @ApiOkResponse({ type: UserDTO })
+  @Get('me')
+  async getMe(@Request() req): Promise<UserDTO> {
+    return UserDTO.fromEntity(await this.usersService.getUserById(req.user.id));
+  }
+
   @Roles(Role.Admin)
   @ApiOkResponse({ type: UserDTO })
   @Get(':id')
@@ -28,24 +42,15 @@ export class UsersController {
 
   @Roles(Role.Admin)
   @ApiOkResponse({ type: UserDTO })
-  @Patch(':id')
-  async updateUser(
-    @Param('id') id: string,
-    @Body() dto: UpdateUserDTO,
-  ): Promise<UserDTO> {
-    return UserDTO.fromEntity(await this.usersService.updateUser(id, dto));
-  }
-
-  @Roles(Role.Admin)
-  @ApiOkResponse({ type: UserDTO })
   @Delete(':id')
   async deleteUser(@Param('id') id: string): Promise<void> {
     return this.usersService.deleteUser(id);
   }
 
+  @Roles(Role.Admin)
   @ApiOkResponse({ type: UserDTO })
-  @Get('me')
-  async getMe(@Request() req): Promise<UserDTO> {
-    return UserDTO.fromEntity(await this.usersService.getUserById(req.user.id));
+  @Post()
+  async createUser(@Body() dto: CreateUserDTO): Promise<UserDTO> {
+    return UserDTO.fromEntity(await this.usersService.createUser(dto));
   }
 }

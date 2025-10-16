@@ -1,4 +1,4 @@
-import { PermissionType } from 'src/constants/enums';
+import { PermissionLevel } from 'src/core/constants/enums';
 import { FileEntity } from 'src/modules/files/entities/file.entity';
 import { User } from 'src/modules/users/entities/user.entity';
 import type { Relation } from 'typeorm';
@@ -13,7 +13,7 @@ import {
 } from 'typeorm';
 
 @Entity('permission')
-@Index(['user', 'file', 'permissionType'], { unique: true })
+@Index(['user', 'file', 'permissionLevel'], { unique: true })
 export class Permission {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -30,10 +30,10 @@ export class Permission {
 
   @Column({
     type: 'enum',
-    enum: PermissionType,
-    default: PermissionType.READ,
+    enum: PermissionLevel,
+    default: PermissionLevel.READ,
   })
-  permissionType: PermissionType;
+  permissionLevel: PermissionLevel;
 
   @CreateDateColumn()
   createdAt: Date;

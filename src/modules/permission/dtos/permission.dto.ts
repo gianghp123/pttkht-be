@@ -1,6 +1,6 @@
 import { Type } from 'class-transformer';
 import { IsEnum } from 'class-validator';
-import { PermissionType } from 'src/constants/enums';
+import { PermissionLevel } from 'src/core/constants/enums';
 import { AutoExpose } from 'src/core/decorators/auto-expose.decorator';
 import { BaseResponseDto } from 'src/core/dto/base.dto';
 import { FileDTO } from 'src/modules/files/dtos/file.dto';
@@ -13,28 +13,29 @@ export class PermissionDTO extends BaseResponseDto {
   file: FileDTO;
   @Type(() => UserDTO)
   user: UserDTO;
-  permissionType: PermissionType;
+  permissionLevel: PermissionLevel;
   createdAt: Date;
 }
 
 @AutoExpose()
 export class SimplePermissionDTO {
   id: string;
-  permissionType: PermissionType;
+  permissionLevel: PermissionLevel;
 }
 
 export class CreatePermissionDTO {
   fileId: string;
   userId: string;
-  @IsEnum(PermissionType, {
-    message: `permission must be one of ${Object.values(PermissionType)}`,
+  @IsEnum(PermissionLevel, {
+    message: `permission must be one of ${Object.values(PermissionLevel)}`,
   })
-  permissionType: PermissionType;
+  permissionLevel: PermissionLevel;
 }
 
 export class UpdatePermissionDTO {
-  @IsEnum(PermissionType, {
-    message: `permission must be one of ${Object.values(PermissionType)}`,
+  fileId: string;
+  @IsEnum(PermissionLevel, {
+    message: `permission must be one of ${Object.values(PermissionLevel)}`,
   })
-  permissionType: PermissionType;
+  permissionLevel: PermissionLevel;
 }

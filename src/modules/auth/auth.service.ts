@@ -1,11 +1,10 @@
 import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
-import { LoginDto, LoginResponseDto, RegisterDto } from './dtos/auth.dto';
+import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
+import { BcryptUtil } from 'src/core/utils/bcrypt.util';
 import { Repository } from 'typeorm';
 import { User } from '../users/entities/user.entity';
-import { ensureUnique } from 'src/core/utils/check-unique.util';
-import { BcryptUtil } from 'src/core/utils/bcrypt.util';
-import { JwtService } from '@nestjs/jwt';
+import { LoginDto, LoginResponseDto } from './dtos/auth.dto';
 
 @Injectable()
 export class AuthService {
@@ -29,14 +28,4 @@ export class AuthService {
     return { user, token };
   }
   
-  async register(registerDto: RegisterDto): Promise<User> {
-    ensureUnique(this.userRepository, { username: registerDto.username }, 'User')
-    const user = this.userRepository.create({
-      username: registerDto.username,
-      passwordHash: await BcryptUtil.hash(registerDto.password),
-    });
-    const savedUser = await this.userRepository.save(user);
-    return savedUser;
-  }
-  // Add methods here
 }
