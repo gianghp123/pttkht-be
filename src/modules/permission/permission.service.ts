@@ -45,13 +45,24 @@ export class PermissionsService {
         requestUserId,
         requestUserRole,
         fileId,
-        PermissionLevel.SHARE,
+        PermissionLevel.MANAGE,
       ))
     ) {
       throw new ForbiddenException(
         "You don't have permission to assign permission to this file",
       );
     }
+
+    // Check if trying to update to MANAGE permission
+    if (permissionLevel === PermissionLevel.MANAGE) {
+      const file = await this.filesService.getFileById(fileId);
+      if (file.owner.id !== requestUserId && requestUserRole !== Role.Admin) {
+        throw new ForbiddenException(
+          "Only the file owner can assign MANAGE permissions",
+        );
+      }
+    }
+
     const permission = await this.getPermissionById(permissionId);
     if (
       permission.user.id === requestUserId ||
@@ -114,7 +125,7 @@ export class PermissionsService {
         requestUserId,
         requestUserRole,
         fileId,
-        PermissionLevel.SHARE,
+        PermissionLevel.MANAGE,
       ))
     ) {
       throw new ForbiddenException(
@@ -139,22 +150,28 @@ export class PermissionsService {
     fileId: string,
     permissionLevel: PermissionLevel,
   ): Promise<void> {
-    if (permissionLevel == PermissionLevel.SHARE) {
-      throw new ForbiddenException(
-        "You can't assign permission level to share",
-      );
-    }
+
     if (
       !(await this.hasAccess(
         requestUserId,
         requestUserRole,
         fileId,
-        PermissionLevel.SHARE,
+        PermissionLevel.MANAGE,
       ))
     ) {
       throw new ForbiddenException(
         "You don't have permission to assign permission to this file",
       );
+    }
+
+    // Check if trying to assign MANAGE permission
+    if (permissionLevel === PermissionLevel.MANAGE) {
+      const file = await this.filesService.getFileById(fileId);
+      if (file.owner.id !== requestUserId && requestUserRole !== Role.Admin) {
+        throw new ForbiddenException(
+          "Only the file owner can assign MANAGE permissions",
+        );
+      }
     }
 
     const access = await this.permissionRepository.findOne({

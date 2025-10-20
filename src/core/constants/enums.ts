@@ -1,7 +1,6 @@
 export enum PermissionType {
-  READ = 'read',
-  WRITE = 'write',
-  SHARE = 'share',
+  VIEW = 'view',
+  MANAGE = 'manage',
 }
 
 export enum Role {
@@ -10,7 +9,6 @@ export enum Role {
 }
 
 export enum PermissionLevel {
-  READ = 1,
-  WRITE = 2,
-  SHARE = 3,
+  VIEW = 1,    // Can view file details and download
+  MANAGE = 2,  // Can delete file and manage permissions (combined WRITE + SHARE)
 }

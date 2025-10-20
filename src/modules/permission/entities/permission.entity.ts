@@ -31,7 +31,7 @@ export class Permission {
   @Column({
     type: 'enum',
     enum: PermissionLevel,
-    default: PermissionLevel.READ,
+    default: PermissionLevel.VIEW,
   })
   permissionLevel: PermissionLevel;
 

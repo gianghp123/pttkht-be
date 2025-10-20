@@ -1,4 +1,4 @@
-import { ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import 'es6-shim';
@@ -34,8 +34,8 @@ async function bootstrap() {
   });
 
   await app.listen(process.env.PORT ?? 4000);
-  console.log(`Application is running on: ${await app.getUrl()}`);
-  console.log(`Swagger is running on: ${await app.getUrl()}/api-docs`);
+  Logger.log(`Application is running on: ${await app.getUrl()}`);
+  Logger.log(`Swagger is running on: ${await app.getUrl()}/api-docs`);
 }
 
 bootstrap();

@@ -39,7 +39,7 @@ export class FileService {
         requestUserId,
         requestUserRole,
         fileId,
-        PermissionLevel.WRITE,
+        PermissionLevel.MANAGE,
       ))
     ) {
       throw new ForbiddenException(
@@ -68,19 +68,12 @@ export class FileService {
     requestUserRole: Role,
     fileId: string,
   ) {
-    if (
-      !(await this.permissionService.hasAccess(
-        requestUserId,
-        requestUserRole,
-        fileId,
-        PermissionLevel.WRITE,
-      ))
-    ) {
+    const file = await this.getFileById(fileId);
+    if (file.owner.id !== requestUserId && requestUserRole !== Role.Admin) {
       throw new ForbiddenException(
-        'You dont have permission to delete this file',
+        'Only the file owner or admin can delete this file',
       );
     }
-    const file = await this.getFileById(fileId);
     try {
       await this.fileRepository.remove(file);
       await this.minioClientService.removeFile(file.name);
@@ -158,7 +151,7 @@ export class FileService {
       file.originalname = `${file.originalname}-${Date.now()}`;
     }
     const savedFile = await this.createOwnerPermissionsForFile(file, owner);
-    await this.minioClientService.uploadFile(file);
+    
     return savedFile;
   }
 
@@ -182,10 +175,12 @@ export class FileService {
         const permission = queryRunner.manager.create(Permission, {
           file: savedFile,
           user: owner,
-          permissionLevel: PermissionLevel.SHARE,
+          permissionLevel: PermissionLevel.MANAGE,
         });
         await queryRunner.manager.save(Permission, permission);
       }
+
+      await this.minioClientService.uploadFile(file);
 
       await queryRunner.commitTransaction();
       return savedFile;
@@ -211,7 +206,7 @@ export class FileService {
         requestUserId,
         requestUserRole,
         fileId,
-        PermissionLevel.READ,
+        PermissionLevel.VIEW,
       ))
     ) {
       throw new ForbiddenException(
