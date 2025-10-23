@@ -13,9 +13,10 @@ export class UsersService implements OnModuleInit {
     private userRepository: Repository<User>,
   ) {}
 
-  async deleteUser(id: string): Promise<void> {
+  async deleteUser(id: string): Promise<User> {
     const user = await this.getUserById(id);
     await this.userRepository.remove(user);
+    return user;
   }
 
   async getAdmin(): Promise<User> {

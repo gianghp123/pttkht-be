@@ -64,31 +64,35 @@ export class PermissionsController {
     );
   }
 
+  @ApiOkResponse({ type: PermissionDTO })
   @Post('assign')
   async assignPermissionToFile(
     @Request() req,
     @Body() body: CreatePermissionDTO,
-  ): Promise<void> {
-    return this.permissionsService.assignPermission(
+  ): Promise<PermissionDTO> {
+    const permission = await this.permissionsService.assignPermission(
       req.user.id,
       req.user.role,
       body.userId,
       body.fileId,
       body.permissionLevel,
     );
+    return PermissionDTO.fromEntity(permission);
   }
 
+  @ApiOkResponse({ type: PermissionDTO })
   @Delete(':permissionId/file/:fileId')
   async removePermissionFromFile(
     @Request() req,
     @Param('permissionId') permissionId: string,
     @Param('fileId') fileId: string,
-  ): Promise<void> {
-    return this.permissionsService.removePermission(
+  ): Promise<PermissionDTO> {
+    const permission = await this.permissionsService.removePermission(
       req.user.id,
       req.user.role,
       fileId,
       permissionId,
     );
+    return PermissionDTO.fromEntity(permission);
   }
 }

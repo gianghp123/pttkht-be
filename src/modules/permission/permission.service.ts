@@ -119,7 +119,7 @@ export class PermissionsService {
     requestUserRole: Role,
     fileId: string,
     permissionId: string,
-  ): Promise<void> {
+  ): Promise<Permission> {
     if (
       !(await this.hasAccess(
         requestUserId,
@@ -140,7 +140,8 @@ export class PermissionsService {
       throw new ForbiddenException("You can't remove your permission");
     }
 
-    await this.permissionRepository.delete(permission);
+    await this.permissionRepository.delete(permission.id);
+    return permission;
   }
 
   async assignPermission(
@@ -149,7 +150,7 @@ export class PermissionsService {
     userId: string,
     fileId: string,
     permissionLevel: PermissionLevel,
-  ): Promise<void> {
+  ): Promise<Permission> {
 
     if (
       !(await this.hasAccess(
@@ -196,18 +197,21 @@ export class PermissionsService {
       );
     }
 
+    let permission: Permission;
     if (!access) {
       const file = await this.filesService.getFileById(fileId);
-      const permission = this.permissionRepository.create({
+      permission = this.permissionRepository.create({
         file: file,
         user: user,
         permissionLevel,
       });
-      await this.permissionRepository.save(permission);
+      permission = await this.permissionRepository.save(permission);
     } else {
       access.permissionLevel = permissionLevel;
-      await this.permissionRepository.save(access);
+      permission = await this.permissionRepository.save(access);
     }
+    
+    return permission;
   }
 
   async hasAccess(

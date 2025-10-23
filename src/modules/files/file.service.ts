@@ -67,7 +67,7 @@ export class FileService {
     requestUserId: string,
     requestUserRole: Role,
     fileId: string,
-  ) {
+  ): Promise<FileEntity> {
     const file = await this.getFileById(fileId);
     if (file.owner.id !== requestUserId && requestUserRole !== Role.Admin) {
       throw new ForbiddenException(
@@ -83,6 +83,7 @@ export class FileService {
         'Error while deleting file',
       );
     }
+    return file;
   }
 
   async getFileById(id: string): Promise<FileEntity> {
@@ -101,11 +102,21 @@ export class FileService {
     return file;
   }
 
-  async getAllFile(query: FileQueryDTO): Promise<FileEntity[]> {
-    console.log(query);
+  async getAllFile(userId: string, userRole: Role, query: FileQueryDTO): Promise<FileEntity[]> {
     const queryBuilder = this.fileRepository
       .createQueryBuilder('file')
       .leftJoinAndSelect('file.owner', 'owner');
+
+    // If not admin, filter by permissions (VIEW level or higher)
+    if (userRole !== Role.Admin) {
+      queryBuilder
+        .leftJoinAndSelect('file.permissions', 'permission')
+        .andWhere('(permission.user.id = :userId AND permission.permissionLevel >= :viewLevel)', {
+          userId,
+          viewLevel: PermissionLevel.VIEW,
+        });
+    }
+
     if (query.ownerId) {
       queryBuilder.andWhere('file.owner.id = :ownerId', {
         ownerId: query.ownerId,
@@ -135,6 +146,16 @@ export class FileService {
       );
     }
     const files = await queryBuilder.getMany();
+    files.forEach((file) => {
+      if (userRole === Role.Admin && !file.permissions){
+        const managePermission = new Permission()
+        managePermission.permissionLevel = PermissionLevel.MANAGE
+        file.permissions = [managePermission]
+      }
+      else if (!file.permissions) {
+        file.permissions = [];
+      }
+    });
     return files;
   }
 
@@ -217,6 +238,7 @@ export class FileService {
     return {
       fileBuffer: await this.minioClientService.downloadFile(file.name),
       fileName: file.name,
+      mimeType: file.mimeType,
     };
   }
 }

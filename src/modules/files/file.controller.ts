@@ -31,8 +31,8 @@ export class FileController {
 
   @ApiOkResponse({ type: [FileDTO] })
   @Get()
-  async getAllFile(@Query() query: FileQueryDTO): Promise<FileDTO[]> {
-    const files = await this.filesService.getAllFile(query);
+  async getAllFile(@Request() req, @Query() query: FileQueryDTO): Promise<FileDTO[]> {
+    const files = await this.filesService.getAllFile(req.user.id, req.user.role, query);
     return FileDTO.fromEntities(files);
   }
 
@@ -43,12 +43,6 @@ export class FileController {
     return FileDTO.fromEntities(files);
   }
 
-  @ApiOkResponse({ type: FileDTO })
-  @Get(':id')
-  async getFileById(@Param('id') id: string): Promise<FileDTO> {
-    const file = await this.filesService.getFileById(id);
-    return FileDTO.fromEntity(file);
-  }
 
   @Get(':fileId/download')
   async downloadFile(
@@ -56,14 +50,15 @@ export class FileController {
     @Param('fileId') fileId: string,
     @Res({ passthrough: true }) res: Response,
   ): Promise<StreamableFile> {
-    const { fileBuffer, fileName } = await this.filesService.downloadFile(
+    const { fileBuffer, fileName, mimeType } = await this.filesService.downloadFile(
       req.user.id,
       req.user.role,
       fileId,
     );
     res.set({
-      'Content-Type': 'application/json',
+      'Content-Type': mimeType || 'application/octet-stream',
       'Content-Disposition': `attachment; filename="${fileName}"`,
+      'Access-Control-Expose-Headers': 'Content-Disposition', // <- expose it to frontend
     });
     return new StreamableFile(fileBuffer);
   }
@@ -92,12 +87,14 @@ export class FileController {
     );
   }
 
+  @ApiOkResponse({ type: FileDTO })
   @Delete(':fileId')
   async deleteFile(
     @Request() req,
     @Param('fileId') fileId: string,
-  ): Promise<void> {
-    await this.filesService.deleteFile(req.user.id, req.user.role, fileId);
+  ): Promise<FileDTO> {
+    const file = await this.filesService.deleteFile(req.user.id, req.user.role, fileId);
+    return FileDTO.fromEntity(file);
   }
 
   @Get(':fileId/share-link')

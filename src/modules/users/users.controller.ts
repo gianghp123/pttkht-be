@@ -43,8 +43,9 @@ export class UsersController {
   @Roles(Role.Admin)
   @ApiOkResponse({ type: UserDTO })
   @Delete(':id')
-  async deleteUser(@Param('id') id: string): Promise<void> {
-    return this.usersService.deleteUser(id);
+  async deleteUser(@Param('id') id: string): Promise<UserDTO> {
+    const user = await this.usersService.deleteUser(id);
+    return UserDTO.fromEntity(user);
   }
 
   @Roles(Role.Admin)
